@@ -472,7 +472,6 @@ map_header <- tags$div(
   tags$a(
     "About this map",
     href = "about.html",
-    target = "_blank",
     style = paste(
       "color:white;",
       "font-size:13px;",
