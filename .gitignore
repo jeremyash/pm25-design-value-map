@@ -1,0 +1,16 @@
+# RStudio
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# macOS
+.DS_Store
+
+# Original downloaded datasets
+data/raw/
+data/spatial/
+
+# Temporary files
+*.tmp
+*.log
