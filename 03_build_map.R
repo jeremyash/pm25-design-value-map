@@ -73,22 +73,6 @@ monitors <- monitors %>%
   )
 
 
-## Legend colors and labels ----
-
-dv_colors <- c(
-  "#D73027",
-  "#F59E0B",
-  "#3182BD"
-)
-
-dv_labels <- c(
-  "> 9.0",
-  "8.1 - 9.0",
-  "< 8.1"
-)
-
-
-
 # 4. Prepare popup content ----
 
 ## Monitor popups ----
@@ -150,11 +134,13 @@ pm25_map <- leaflet(
   ) %>%
   
   
+  
   ## USFS administrative boundaries ----
 
 addPolygons(
   data = usfs_boundaries,
   group = "National Forests & Grasslands",
+  layerId = ~FORESTNAME,
   color = "#006837",
   weight = 1.5,
   fillColor = "#A1D99B",
@@ -163,6 +149,7 @@ addPolygons(
   popup = ~popup,
   smoothFactor = 1
 ) %>%
+  
   
   
   
@@ -327,6 +314,7 @@ addControl(
 )
 
 
+
 ## Custom expandable monitor layer control ----
 
 pm25_map <- htmlwidgets::onRender(
@@ -334,7 +322,7 @@ pm25_map <- htmlwidgets::onRender(
   "
   function(el, x) {
     var map = this;
-    
+
     // Zoom controls in upper-right
     L.control.zoom({
       position: 'topright'
@@ -358,51 +346,60 @@ pm25_map <- htmlwidgets::onRender(
           Map Layers
         </div>
 
-        
-      <details open>
-        <summary style='cursor:pointer; font-weight:bold;'>
-          PM<sub>2.5</sub> Monitors
-        </summary>
-      
-        <div style='padding:7px 0 5px 12px;'>
-      
-          <label style='display:block; margin-bottom:8px; cursor:pointer;'>
-            <input type='checkbox' data-group='Monitors: Above 9.0' checked>
-            <span style='display:inline-block; width:13px; height:13px;
-              background:#D73027; border:1px solid #333;
-              border-radius:50%; vertical-align:middle;
-              margin:0 5px 0 3px;'></span>
-            Above 9.0
-          </label>
-      
-          <label style='display:block; margin-bottom:8px; cursor:pointer;'>
-            <input type='checkbox' data-group='Monitors: 8.1 to 9.0' checked>
-            <span style='display:inline-block; width:13px; height:13px;
-              background:#F59E0B; border:1px solid #333;
-              border-radius:50%; vertical-align:middle;
-              margin:0 5px 0 3px;'></span>
-            8.1–9.0
-          </label>
-      
-          <label style='display:block; cursor:pointer;'>
-            <input type='checkbox' data-group='Monitors: Below 8.1'>
-            <span style='display:inline-block; width:13px; height:13px;
-              background:#3182BD; border:1px solid #333;
-              border-radius:50%; vertical-align:middle;
-              margin:0 5px 0 3px;'></span>
-            Below 8.1
-          </label>
-      
-        </div>
-      </details>
+        <details open>
+          <summary style='cursor:pointer; font-weight:bold;'>
+            PM<sub>2.5</sub> Monitors
+          </summary>
 
+          <div style='padding:7px 0 5px 12px;'>
+
+            <label style='display:block; margin-bottom:8px; cursor:pointer;'>
+              <input type='checkbox'
+                     data-group='Monitors: Above 9.0' checked>
+              <span style='display:inline-block; width:13px; height:13px;
+                background:#D73027; border:1px solid #333;
+                border-radius:50%; vertical-align:middle;
+                margin:0 5px 0 3px;'></span>
+              Above 9.0
+            </label>
+
+            <label style='display:block; margin-bottom:8px; cursor:pointer;'>
+              <input type='checkbox'
+                     data-group='Monitors: 8.1 to 9.0' checked>
+              <span style='display:inline-block; width:13px; height:13px;
+                background:#F59E0B; border:1px solid #333;
+                border-radius:50%; vertical-align:middle;
+                margin:0 5px 0 3px;'></span>
+              8.1–9.0
+            </label>
+
+            <label style='display:block; cursor:pointer;'>
+              <input type='checkbox'
+                     data-group='Monitors: Below 8.1'>
+              <span style='display:inline-block; width:13px; height:13px;
+                background:#3182BD; border:1px solid #333;
+                border-radius:50%; vertical-align:middle;
+                margin:0 5px 0 3px;'></span>
+              Below 8.1
+            </label>
+
+          </div>
+        </details>
 
         <hr style='border:0; border-top:1px solid #ddd; margin:7px 0;'>
 
-        <label>
+        <label style='display:block; cursor:pointer;'>
           <input type='checkbox'
                  data-group='Nonattainment Areas (preliminary)' checked>
           Nonattainment Areas (preliminary)
+        </label>
+
+        <hr style='border:0; border-top:1px solid #ddd; margin:7px 0;'>
+
+        <label style='display:block; cursor:pointer;'>
+          <input type='checkbox'
+                 data-group='National Forests & Grasslands' checked>
+          National Forests &amp; Grasslands
         </label>
       `;
 
@@ -429,11 +426,71 @@ pm25_map <- htmlwidgets::onRender(
       return div;
     };
 
+    
     control.addTo(map);
+
+    // Compact layer control on mobile devices
+    if (window.innerWidth <= 600) {
+
+      var layerControl = control.getContainer();
+
+      layerControl.style.minWidth = '0';
+      layerControl.style.padding = '7px 9px';
+      layerControl.style.fontSize = '12px';
+
+      // Collapse monitor categories on mobile
+      var monitorDetails = layerControl.querySelector('details');
+
+      if (monitorDetails) {
+        monitorDetails.open = false;
+      }
+
+    }
   }
   "
 )
 
+
+
+
+## Zoom to forest when clicked ----
+
+pm25_map <- htmlwidgets::onRender(
+  pm25_map,
+  "
+  function(el, x) {
+    var map = this;
+
+    // Find the USFS forest polygon group
+    var forestGroup = map.layerManager.getLayerGroup(
+      'National Forests & Grasslands'
+    );
+
+    if (!forestGroup) return;
+
+    // Attach a click handler to each forest polygon
+    forestGroup.eachLayer(function(layer) {
+
+      if (!layer.getBounds) return;
+
+      layer.on('click', function() {
+
+        var bounds = layer.getBounds();
+
+        if (!bounds.isValid()) return;
+
+        // Add 20% padding around the forest
+        map.fitBounds(bounds.pad(0.20), {
+          animate: true,
+          maxZoom: 11
+        });
+
+      });
+
+    });
+  }
+  "
+)
 
 
 # 6. Add map header ----
@@ -538,10 +595,6 @@ htmltools::save_html(
 map_page
 
 
-
-# 8. Display map ----
-
-map_page
 
 
 

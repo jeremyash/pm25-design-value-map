@@ -95,21 +95,24 @@ st_write(
 
 
 
+
 # 7. Read USFS administrative boundaries ----
 
 ## Source documentation ----
 
 # USDA Forest Service
-# Dataset: Forest Administrative Boundaries
-# Includes National Forest and Grassland administrative units.
-#
-# Source:
+# Forest Administrative Boundaries:
 # https://data-usfs.hub.arcgis.com/datasets/usfs::forest-administrative-boundaries-feature-layer
+#
+# Individual National Forest and National Grassland units:
+# data/spatial/land_units/land_units.shp
+#
+# Five aggregated administrative units are replaced
+# with individual units from the land_units shapefile.
 
 
-## Read GeoJSON ----
+## Read administrative GeoJSON ----
 
-# Remove GDAL's per-feature GeoJSON size limit.
 Sys.setenv(OGR_GEOJSON_MAX_OBJ_SIZE = "0")
 
 usfs_raw <- st_read(
@@ -118,12 +121,34 @@ usfs_raw <- st_read(
 )
 
 
+## Read individual land units ----
+
+land_units_raw <- st_read(
+  "data/spatial/land_units/land_units.shp",
+  quiet = TRUE
+)
+
+
 # 8. Prepare CONUS USFS boundaries ----
 
-usfs_boundaries <- usfs_raw %>%
+## Aggregated units to replace ----
+
+replace_forests <- c(
+  "National Forests in North Carolina",
+  "National Forests in Alabama",
+  "National Forests in Florida",
+  "National Forests in Texas",
+  "National Forests in Mississippi"
+)
+
+
+## Retain remaining administrative boundaries ----
+
+usfs_remaining <- usfs_raw %>%
   filter(
     REGION != "10",
-    FORESTNAME != "El Yunque National Forest"
+    FORESTNAME != "El Yunque National Forest",
+    !FORESTNAME %in% replace_forests
   ) %>%
   select(
     ADMINFORESTID,
@@ -136,21 +161,121 @@ usfs_boundaries <- usfs_raw %>%
   st_make_valid()
 
 
-# 9. Validate USFS boundaries ----
+## Select individual National Forest and Grassland units ----
 
-## Feature counts ----
+land_units_selected <- land_units_raw %>%
+  filter(
+    NFSLANDU_1 %in% c(
+      "National Forest",
+      "National Grassland"
+    )
+  ) %>%
+  st_transform(4326) %>%
+  st_make_valid()
 
-cat("Original USFS units:", nrow(usfs_raw), "\n")
-cat("CONUS USFS units:", nrow(usfs_boundaries), "\n")
 
 
-## Geometry validation ----
 
-cat(
-  "Coordinate system:",
-  st_crs(usfs_boundaries)$epsg,
-  "\n"
+## Identify individual replacement units ----
+
+replacement_units <- c(
+  # North Carolina
+  "Croatan National Forest",
+  "Nantahala National Forest",
+  "Pisgah National Forest",
+  "Uwharrie National Forest",
+  
+  # Alabama
+  "Conecuh National Forest",
+  "Talladega National Forest",
+  "Tuskegee National Forest",
+  "William B. Bankhead National Forest",
+  
+  # Florida
+  "Apalachicola National Forest",
+  "Ocala National Forest",
+  "Osceola National Forest",
+  
+  # Texas
+  "Angelina National Forest",
+  "Davy Crockett National Forest",
+  "Sabine National Forest",
+  "Sam Houston National Forest",
+  "Caddo National Grassland",
+  "Lyndon B. Johnson National Grassland",
+  
+  # Mississippi
+  "Bienville National Forest",
+  "De Soto National Forest",
+  "Delta National Forest",
+  "Holly Springs National Forest",
+  "Homochitto National Forest",
+  "Tombigbee National Forest"
 )
+
+
+## Select only named National Forests and Grasslands ----
+
+land_units_replacement <- land_units_selected %>%
+  filter(
+    REGION == "08",
+    NFSLANDU_2 %in% replacement_units
+  )
+
+
+## Validate replacement units ----
+
+replacement_found <- unique(land_units_replacement$NFSLANDU_2)
+
+cat("Replacement records:", nrow(land_units_replacement), "\n")
+cat("Unique replacement units:", length(replacement_found), "\n")
+
+cat("\nMissing units:\n")
+print(setdiff(replacement_units, replacement_found))
+
+cat("\nSelected units:\n")
+print(
+  land_units_replacement %>%
+    st_drop_geometry() %>%
+    count(NFSLANDU_1, NFSLANDU_2) %>%
+    arrange(NFSLANDU_2)
+)
+
+
+# 9. Combine USFS administrative and individual units ----
+
+## Standardize replacement unit attributes ----
+
+land_units_standardized <- land_units_replacement %>%
+  transmute(
+    ADMINFORESTID = NA_character_,
+    REGION = as.character(REGION),
+    FORESTNAME = NFSLANDU_2,
+    GIS_ACRES = as.numeric(GIS_ACRES)
+  )
+
+
+## Match attribute types and combine ----
+
+usfs_remaining <- usfs_remaining %>%
+  mutate(
+    ADMINFORESTID = as.character(ADMINFORESTID),
+    REGION = as.character(REGION),
+    GIS_ACRES = as.numeric(GIS_ACRES)
+  )
+
+usfs_boundaries <- bind_rows(
+  usfs_remaining,
+  land_units_standardized
+) %>%
+  st_make_valid()
+
+
+# 10. Validate combined boundaries ----
+
+cat("Remaining administrative units:", nrow(usfs_remaining), "\n")
+cat("Individual replacement units:", nrow(land_units_standardized), "\n")
+cat("Total combined units:", nrow(usfs_boundaries), "\n")
 
 cat(
   "Invalid geometries:",
@@ -158,8 +283,26 @@ cat(
   "\n"
 )
 
+cat(
+  "Coordinate system:",
+  st_crs(usfs_boundaries)$epsg,
+  "\n"
+)
 
-# 10. Export USFS boundaries ----
+## Confirm aggregated units were removed ----
+
+stopifnot(
+  !any(usfs_boundaries$FORESTNAME %in% replace_forests)
+)
+
+## Confirm all 23 replacement units are present ----
+
+stopifnot(
+  all(replacement_units %in% usfs_boundaries$FORESTNAME)
+)
+
+
+# 11. Export combined USFS boundaries ----
 
 st_write(
   usfs_boundaries,
@@ -167,4 +310,5 @@ st_write(
   delete_dsn = TRUE,
   quiet = TRUE
 )
+
 
