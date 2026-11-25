@@ -547,6 +547,12 @@ map_header <- tags$div(
 map_page <- htmltools::browsable(
   htmltools::tagList(
     tags$head(
+      tags$title("Annual PM2.5 Design Values"),
+      tags$link(
+        rel = "icon",
+        type = "image/svg+xml",
+        href = "assets/icons/pm25-map-favicon.svg"
+      ),
       tags$style(HTML("
         html, body {
           margin: 0;
